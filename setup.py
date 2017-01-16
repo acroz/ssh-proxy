@@ -16,7 +16,7 @@ def read_long_description():
 
 setup(
     name='ssh-proxy',
-    version='0.1.1',
+    version='0.1.2',
     description='Run a SOCKS proxy over an SSH dynamic forwarding connection',
     long_description=read_long_description(),
     url='https://acroz.github.io',
