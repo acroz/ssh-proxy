@@ -91,7 +91,3 @@ def main():
             prompt_thread = threaded_quit_prompt()
             while prompt_thread.is_alive() and not ssh_error_event.is_set():
                 prompt_thread.join(0.5)
-
-
-if __name__ == '__main__':
-    main()
