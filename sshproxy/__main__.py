@@ -1,0 +1,2 @@
+import sshproxy
+sshproxy.main()
