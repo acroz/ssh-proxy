@@ -3,6 +3,7 @@ from six.moves import input
 
 import argparse
 from contextlib import contextmanager
+import threading
 import subprocess
 try:
     from subprocess import DEVNULL
@@ -11,6 +12,21 @@ except ImportError:
     DEVNULL = open(os.devnull, 'wb')
 
 from . import networksetup
+
+
+def signal_on_error(process, event):
+    """Wait for a process to exit and signal if it fails.
+
+    Parameters
+    ----------
+    process : subprocess.Popen
+    event : threading.Event
+        An event to set() on non-zero return from the process
+    """
+    retcode = process.wait()
+    if retcode:
+        event.set()
+        raise subprocess.CalledProcessError(retcode, process.args)
 
 
 @contextmanager
@@ -26,10 +42,27 @@ def ssh_proxy(host, proxy_port):
     """
     cmd = ['ssh', host, '-q', '-N', '-D', str(proxy_port)]
     process = subprocess.Popen(cmd, stdin=DEVNULL)
+
+    ssh_error = threading.Event()
+    thread = threading.Thread(target=signal_on_error,
+                              args=(process, ssh_error),
+                              daemon=True)
+    thread.start()
+
     try:
-        yield
+        yield ssh_error
     finally:
         process.terminate()
+
+
+def threaded_quit_prompt():
+    """Prompt the user to quit in a thread."""
+    def prompt():
+        while input('  Enter q to end: ').strip().lower() != 'q':
+            continue
+    thread = threading.Thread(target=prompt, daemon=True)
+    thread.start()
+    return thread
 
 
 def main():
@@ -51,12 +84,13 @@ def main():
                         help='Run networksetup without sudo')
     args = parser.parse_args()
 
-    with ssh_proxy(args.host, args.port):
+    with ssh_proxy(args.host, args.port) as ssh_error_event:
         with networksetup.socks_proxy(args.interface, 'localhost',
                                       args.port, args.sudo):
             print('Proxy running on port {}'.format(args.port))
-            while input('  Enter q to end: ').strip().lower() != 'q':
-                continue
+            prompt_thread = threaded_quit_prompt()
+            while prompt_thread.is_alive() and not ssh_error_event.is_set():
+                prompt_thread.join(0.5)
 
 
 if __name__ == '__main__':
